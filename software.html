@@ -493,160 +493,217 @@ INSERT INTO `databaseLab5`.`MultiChoise` (`id`, `variants`, `Content_id`) VALUES
 
 COMMIT;
 </code></pre>
+
+                        
 <h2 id="rest-api-для-управління-даними"><a class="header" href="#rest-api-для-управління-даними">REST API для управління даними</a></h2>
-<h3 id="Підключення-до-бази-даних-mysql"><a class="header" href="#Підключення-до-бази-даних-mysql">Підключення до бази даних MySql</a></h3>
-<h4 id="configdbjs"><a class="header" href="#configdbjs">config/db.js</a></h4>
-<pre><code class="language-javascript">const { Sequelize } = require('sequelize');
-require('dotenv').config();
 
-const sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
-    process.env.DB_PASSWORD,
-    {
-        host: process.env.DB_HOST,
-        dialect: 'mysql',
-        port: process.env.DB_PORT,
-    }
-);
+<h3 id="підключення-до-бази-даних-mysql"><a class="header" href="#підключення-до-бази-даних-mysql">Підключення до бази даних MySql</a></h3>
+<h4 id="connectionjs"><a class="header" href="#connectionjs">connection.js</a></h4>
+<pre><code class="language-javascript">
+import { config } from "dotenv";
+import { createConnection } from "mysql2";
+import chalk from "chalk";
 
-sequelize.authenticate()
-    .then(() =&gt; console.log('Database connected...'))
-    .catch((err) =&gt; console.error('Unable to connect to the database:', err));
+config();
 
-module.exports = sequelize;
-</code></pre>
-<h3 id="Налаштування-сервера"><a class="header" href="#Налаштування-сервера">Налаштування сервера</a></h3>
-<h4 id="appjs"><a class="header" href="#appjs">app.js</a></h4>
-<pre><code class="language-javascript">const express = require('express');
-const bodyParser = require('body-parser');
-const adminRoutes = require('./routes/admin.routes');
-require('dotenv').config();
-require('./config/db'); // Ensure database connection
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(bodyParser.json());
-app.use('/api/admins', adminRoutes);
-
-app.listen(PORT, () =&gt; {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
-</code></pre>
-<h3 id="Маршрутизація"><a class="header" href="#Маршрутизація">Маршрутизація</a></h3>
-<h4 id="routesadminroutesjs"><a class="header" href="#routesadminroutesjs">routes/admin.routes.js</a></h4>
-<pre><code class="language-javascript">const express = require('express');
-const {
-    getAllAdmins,
-    getAdminById,
-    createAdmin,
-    updateAdmin,
-    deleteAdmin,
-} = require('../controllers/admin.controller');
-
-const router = express.Router();
-
-router.get('/', getAllAdmins);
-router.get('/:id', getAdminById);
-router.post('/', createAdmin);
-router.put('/:id', updateAdmin);
-router.delete('/:id', deleteAdmin);
-
-module.exports = router;
-</code></pre>
-<h3 id="Контролери"><a class="header" href="#Контролери">Контролери</a></h3>
-<h4 id="controllersadmincontrollerjs"><a class="header" href="#controllersadmincontrollerjs">controllers/admin.controller.js</a></h4>
-<pre><code class="language-javascript">const Admin = require('../models/admin.model');
-
-exports.getAllAdmins = async (req, res) =&gt; {
-    try {
-        const admins = await Admin.findAll();
-        res.json(admins);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-exports.getAdminById = async (req, res) =&gt; {
-    try {
-        const admin = await Admin.findByPk(req.params.id);
-        if (!admin) return res.status(404).json({ message: 'Admin not found' });
-        res.json(admin);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-exports.createAdmin = async (req, res) =&gt; {
-    try {
-        const newAdmin = await Admin.create(req.body);
-        res.status(201).json(newAdmin);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-exports.updateAdmin = async (req, res) =&gt; {
-    try {
-        const [updated] = await Admin.update(req.body, { where: { id: req.params.id } });
-        if (!updated) return res.status(404).json({ message: 'Admin not found' });
-        res.json({ message: 'Admin updated successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-exports.deleteAdmin = async (req, res) =&gt; {
-    try {
-        const deleted = await Admin.destroy({ where: { id: req.params.id } });
-        if (!deleted) return res.status(404).json({ message: 'Admin not found' });
-        res.json({ message: 'Admin deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-</code></pre>
-<h3 id="Модель-Адміна"><a class="header" href="#Модель-Адміна">Модель Адміна</a></h3>
-<h4 id="modelsadminmodeljs"><a class="header" href="#modelsadminmodeljs">models/admin.model.js</a></h4>
-<pre><code class="language-javascript">const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const Admin = sequelize.define('Admin', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-    },
-    name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    surname: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    email: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    password: {
-        type: DataTypes.STRING(8),
-        allowNull: false,
-    },
-}, {
-    tableName: 'Admin',
-    timestamps: false,
+const connection = createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
 });
 
-module.exports = Admin;
+const connectToDB = () => {
+  connection.connect((error) => {
+    if (error) {
+      console.error("Failed to connect to the database:", error.message);
+    } else {
+      console.log(chalk.greenBright("Successfully connected to the database"));
+    }
+  });
+};
 
+export { connection, connectToDB };
 </code></pre>
-<h3 id="Коди-статусів-http"><a class="header" href="#Коди-статусів-http">Коди статусів HTTP</a></h3>
-<h4 id="utilsstatuscodesjs"><a class="header" href="#utilsstatuscodesjs">utils/statusCodes.js</a></h4>
-<pre><code class="language-javascript">const HTTP_STATUS_CODES = {
+
+<h3 id="налаштування-сервера"><a class="header" href="#налаштування-сервера">Налаштування сервера</a></h3>
+<h4 id="serverjs"><a class="header" href="#serverjs">server.js</a></h4>
+<pre><code class="language-javascript">
+import { createServer } from "http";
+import { connection, connectToDB } from "./connection.js";
+import { handleRequest } from "./router.js";
+import chalk from "chalk";
+
+const PORT = 3000;
+
+connectToDB();
+
+createServer(async (req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (error) {
+    console.error("Error handling request:", error.message);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}).listen(PORT, () => {
+  console.log(
+    chalk.greenBright(`Server is running on http://localhost:${PORT}`)
+  );
+});
+</code></pre>
+
+<h3 id="маршрутизація"><a class="header" href="#маршрутизація">Маршрутизація</a></h3>
+<h4 id="routerjs"><a class="header" href="#routerjs">router.js</a></h4>
+<pre><code class="language-javascript">
+import {
+  getAllForms,
+  getFormById,
+  createForm,
+  updateForm,
+  deleteForm,
+} from "./formController.js";
+
+export const handleRequest = (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const { pathname } = url;
+
+  const id = pathname.split("/")[2];
+
+  if (req.method === "GET" && pathname === "/forms") {
+    getAllForms(req, res);
+  } else if (req.method === "GET" && pathname.startsWith("/forms/")) {
+    getFormById(req, res, id);
+  } else if (req.method === "POST" && pathname === "/forms") {
+    createForm(req, res);
+  } else if (req.method === "PUT" && pathname.startsWith("/forms/")) {
+    updateForm(req, res, id);
+  } else if (req.method === "DELETE" && pathname.startsWith("/forms/")) {
+    deleteForm(req, res, id);
+  } else {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not Found" }));
+  }
+};
+</code></pre>
+
+<h3 id="контролери"><a class="header" href="#контролери">Контролери</a></h3>
+<h4 id="formcontrollerjs"><a class="header" href="#formcontrollerjs">formController.js</a></h4>
+<pre><code class="language-javascript">
+import { connection } from "./connection.js";
+import sendResponse from "./sendResponse.js";
+
+const parseRequestBody = async (req) => {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+};
+
+export const getAllForms = (req, res) => {
+  const query = "SELECT * FROM Form";
+
+  connection.query(query, (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
+    }
+    sendResponse(res, 200, results);
+  });
+};
+
+export const getFormById = (req, res, id) => {
+  const query = "SELECT * FROM Form WHERE id = ?";
+
+  connection.query(query, [id], (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
+    }
+    if (results.length === 0) {
+      return sendResponse(res, 404, { error: "Form not found" });
+    }
+    sendResponse(res, 200, results[0]);
+  });
+};
+
+export const createForm = async (req, res) => {
+  try {
+    const form = await parseRequestBody(req);
+    const query =
+      "INSERT INTO Form (id, name, description, content) VALUES (?, ?, ?, ?)";
+
+    const values = [
+      form.id,
+      form.name,
+      form.description,
+      JSON.stringify(form.content),
+    ];
+
+    connection.query(query, values, (err) => {
+      if (err) {
+        return sendResponse(res, 500, { error: err.message });
+      }
+      sendResponse(res, 201, { message: "Form created successfully" });
+    });
+  } catch (error) {
+    sendResponse(res, 400, { error: "Invalid request data" });
+  }
+};
+
+export const updateForm = async (req, res, id) => {
+  try {
+    const updatedForm = await parseRequestBody(req);
+    const query =
+      "UPDATE Form SET name = ?, description = ?, content = ? WHERE id = ?";
+
+    const values = [
+      updatedForm.name,
+      updatedForm.description,
+      JSON.stringify(updatedForm.content),
+      id,
+    ];
+
+    connection.query(query, values, (err, results) => {
+      if (err) {
+        return sendResponse(res, 500, { error: err.message });
+      }
+      if (results.affectedRows === 0) {
+        return sendResponse(res, 404, { error: "Form not found" });
+      }
+      sendResponse(res, 200, { message: "Form updated successfully" });
+    });
+  } catch (error) {
+    sendResponse(res, 400, { error: "Invalid request data" });
+  }
+};
+
+export const deleteForm = (req, res, id) => {
+  const query = "DELETE FROM Form WHERE id = ?";
+
+  connection.query(query, [id], (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
+    }
+    if (results.affectedRows === 0) {
+      return sendResponse(res, 404, { error: "Form not found" });
+    }
+    sendResponse(res, 200, { message: "Form deleted successfully" });
+  });
+};
+</code></pre>
+
+<h3 id="коди-статусів-http"><a class="header" href="#коди-статусів-http">Коди статусів HTTP</a></h3>
+<h4 id="statuscodejs"><a class="header" href="#statuscodejs">statusCode.js</a></h4>
+<pre><code class="language-javascript">
+const HTTP_STATUS_CODES = {
   OK: 200,
   CREATED: 201,
   BAD_REQUEST: 400,
@@ -656,6 +713,27 @@ module.exports = Admin;
 
 export default HTTP_STATUS_CODES;
 </code></pre>
+
+<h3 id="відправка-відповіді"><a class="header" href="#відправка-відповіді">Відправка відповіді</a></h3>
+<h4 id="sendresponsejs"><a class="header" href="#sendresponsejs">sendResponse.js</a></h4>
+<pre><code class="language-javascript">
+const sendResponse = (res, statusCode, data = null) => {
+  const response = {
+    message: "Success",
+  };
+
+  if (data !== null) {
+    response.data = data;
+  }
+
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+
+  res.end(JSON.stringify(response));
+};
+
+export default sendResponse;
+</code></pre>
+
 
                     </main>
 
