@@ -607,7 +607,7 @@ export default HTTP_STATUS_CODES;
 
 #### sendResponse.js
 
-```
+```javascript
 const sendResponse = (res, statusCode, data = null) => {
   const response = {
     message: "Success",
