@@ -346,172 +346,250 @@ COMMIT;
 
 ### Підключення до бази даних MySql
 
-#### config/db.js
+#### connection.js
 
 ```javascript
-const { Sequelize } = require('sequelize');
-require('dotenv').config();
+import { config } from "dotenv";
+import { createConnection } from "mysql2";
+import chalk from "chalk";
 
-const sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
-    process.env.DB_PASSWORD,
-    {
-        host: process.env.DB_HOST,
-        dialect: 'mysql',
-        port: process.env.DB_PORT,
+config();
+
+const connection = createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+});
+
+const connectToDB = () => {
+  connection.connect((error) => {
+    if (error) {
+      console.error("Failed to connect to the database:", error.message);
+    } else {
+      console.log(chalk.greenBright("Successfully connected to the database"));
     }
-);
+  });
+};
 
-sequelize.authenticate()
-    .then(() => console.log('Database connected...'))
-    .catch((err) => console.error('Unable to connect to the database:', err));
+export { connection, connectToDB };
 
-module.exports = sequelize;
 ```
 ### Налаштування сервера
 
-#### app.js
+#### server.js
 
 ```javascript
-const express = require('express');
-const bodyParser = require('body-parser');
-const adminRoutes = require('./routes/admin.routes');
-require('dotenv').config();
-require('./config/db'); // Ensure database connection
+import { createServer } from "http";
+import { connection, connectToDB } from "./connection.js";
+import { handleRequest } from "./router.js";
+import chalk from "chalk";
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
-app.use(bodyParser.json());
-app.use('/api/admins', adminRoutes);
+connectToDB();
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+createServer(async (req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (error) {
+    console.error("Error handling request:", error.message);
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}).listen(PORT, () => {
+  console.log(
+    chalk.greenBright(`Server is running on http://localhost:${PORT}`)
+  );
 });
+
 ```
 ### Маршрутизація
 
-#### routes/admin.routes.js
+#### router.js
 
 ```javascript
-const express = require('express');
-const {
-    getAllAdmins,
-    getAdminById,
-    createAdmin,
-    updateAdmin,
-    deleteAdmin,
-} = require('../controllers/admin.controller');
+import {
+  getAllForms,
+  getFormById,
+  createForm,
+  updateForm,
+  deleteForm,
+} from "./formController.js";
 
-const router = express.Router();
+export const handleRequest = (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const { pathname } = url;
 
-router.get('/', getAllAdmins);
-router.get('/:id', getAdminById);
-router.post('/', createAdmin);
-router.put('/:id', updateAdmin);
-router.delete('/:id', deleteAdmin);
+  const id = pathname.split("/")[2];
 
-module.exports = router;
+  if (req.method === "GET" && pathname === "/forms") {
+    getAllForms(req, res);
+  } else if (req.method === "GET" && pathname.startsWith("/forms/")) {
+    getFormById(req, res, id);
+  } else if (req.method === "POST" && pathname === "/forms") {
+    createForm(req, res);
+  } else if (req.method === "PUT" && pathname.startsWith("/forms/")) {
+    updateForm(req, res, id);
+  } else if (req.method === "DELETE" && pathname.startsWith("/forms/")) {
+    deleteForm(req, res, id);
+  } else {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not Found" }));
+  }
+};
+
 ```
 ### Контролери
 
-#### controllers/admin.controller.js
+#### formController.js
 
 ```javascript
-const Admin = require('../models/admin.model');
+import { connection } from "./connection.js";
+import errorProducer from "./errors.js";
+import sendResponse from "./sendResponse.js";
+import HTTP_STATUS_CODES from "./statusCode.js";
 
-exports.getAllAdmins = async (req, res) => {
-    try {
-        const admins = await Admin.findAll();
-        res.json(admins);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+// Utility to parse JSON body
+const parseRequestBody = async (req) => {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
 };
 
-exports.getAdminById = async (req, res) => {
-    try {
-        const admin = await Admin.findByPk(req.params.id);
-        if (!admin) return res.status(404).json({ message: 'Admin not found' });
-        res.json(admin);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+export const getAllForms = (req, res) => {
+  const query = "SELECT * FROM Form";
+  console.log(query);
+
+  connection.query(query, (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
     }
+    sendResponse(res, 200, results);
+  });
 };
 
-exports.createAdmin = async (req, res) => {
-    try {
-        const newAdmin = await Admin.create(req.body);
-        res.status(201).json(newAdmin);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+export const getFormById = (req, res, id) => {
+  const query = "SELECT * FROM Form WHERE id = ?";
+  console.log(query);
+
+  connection.query(query, [id], (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
     }
+    if (results.length === 0) {
+      return sendResponse(res, 404, { error: "Form not found" });
+    }
+    sendResponse(res, 200, results[0]);
+  });
 };
 
-exports.updateAdmin = async (req, res) => {
-    try {
-        const [updated] = await Admin.update(req.body, { where: { id: req.params.id } });
-        if (!updated) return res.status(404).json({ message: 'Admin not found' });
-        res.json({ message: 'Admin updated successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+export const createForm = async (req, res) => {
+  try {
+    const form = await parseRequestBody(req);
+    const query =
+      "INSERT INTO Form (id, name, description, content) VALUES (?, ?, ?, ?)";
+    console.log(query);
+
+    const values = [
+      form.id,
+      form.name,
+      form.description,
+      JSON.stringify(form.content),
+    ];
+
+    connection.query(query, values, (err) => {
+      if (err) {
+        return sendResponse(res, 500, { error: err.message });
+      }
+      sendResponse(res, 201, { message: "Form created successfully" });
+    });
+  } catch (error) {
+    sendResponse(res, 400, { error: "Invalid request data" });
+  }
 };
 
-exports.deleteAdmin = async (req, res) => {
-    try {
-        const deleted = await Admin.destroy({ where: { id: req.params.id } });
-        if (!deleted) return res.status(404).json({ message: 'Admin not found' });
-        res.json({ message: 'Admin deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+export const updateForm = async (req, res, id) => {
+  try {
+    const updatedForm = await parseRequestBody(req);
+    const query =
+      "UPDATE Form SET name = ?, description = ?, content = ? WHERE id = ?";
+    const values = [
+      updatedForm.name,
+      updatedForm.description,
+      JSON.stringify(updatedForm.content),
+      id,
+    ];
+
+    connection.query(query, values, (err, results) => {
+      if (err) {
+        return sendResponse(res, 500, { error: err.message });
+      }
+      if (results.affectedRows === 0) {
+        return sendResponse(res, 404, { error: "Form not found" });
+      }
+      sendResponse(res, 200, { message: "Form updated successfully" });
+    });
+  } catch (error) {
+    sendResponse(res, 400, { error: "Invalid request data" });
+  }
 };
+
+export const deleteForm = (req, res, id) => {
+  const query = "DELETE FROM Form WHERE id = ?";
+
+  connection.query(query, [id], (err, results) => {
+    if (err) {
+      return sendResponse(res, 500, { error: err.message });
+    }
+    if (results.affectedRows === 0) {
+      return sendResponse(res, 404, { error: "Form not found" });
+    }
+    sendResponse(res, 200, { message: "Form deleted successfully" });
+  });
+};
+
 
 ```
-### Модель Адміна
+### Помилик
 
-#### models/admin.model.js
+#### errors.js
 
 ```javascript
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const createError = (message, statusCode, details = null) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.details = details;
+  return error;
+};
 
-const Admin = sequelize.define('Admin', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-    },
-    name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    surname: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    email: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true,
-    },
-    password: {
-        type: DataTypes.STRING(8),
-        allowNull: false,
-    },
-}, {
-    tableName: 'Admin',
-    timestamps: false,
-});
+const errorProducer = {
+  missingFields: () => createError("Missing required fields", 400),
+  notFound: () => createError("Resource not found", 404),
+  createError: (details) =>
+    createError("Error creating resource", 500, details),
+  getError: (details) => createError("Error fetching resource", 500, details),
+  updateError: (details) =>
+    createError("Error updating resource", 500, details),
+  deleteError: (details) =>
+    createError("Error deleting resource", 500, details),
+};
 
-module.exports = Admin;
-
+export default errorProducer;
 ```
 ### Коди статусів HTTP
 
-#### utils/statusCodes.js
+#### statusCode.js
 
 ```javascript
 const HTTP_STATUS_CODES = {
@@ -523,4 +601,26 @@ const HTTP_STATUS_CODES = {
 };
 
 export default HTTP_STATUS_CODES;
+```
+
+### Відправка відповіді 
+
+#### sendResponse.js
+
+```
+const sendResponse = (res, statusCode, data = null) => {
+  const response = {
+    message: "Success",
+  };
+
+  if (data !== null) {
+    response.data = data;
+  }
+
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+
+  res.end(JSON.stringify(response));
+};
+
+export default sendResponse;
 ```
